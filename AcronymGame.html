@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acronym Guessing Game</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        // Import necessary Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import * as authModule from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import * as firestoreModule from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Expose individual Firebase functions to the window object with clear names.
+        // This is crucial for accessing them from the main script block which is not a module.
+        window.firebaseInitializeApp = initializeApp;
+        window.firebaseGetAuth = authModule.getAuth;
+        window.firebaseSignInAnonymously = authModule.signInAnonymously;
+        window.firebaseSignInWithCustomToken = authModule.signInWithCustomToken;
+        window.firebaseOnAuthStateChanged = authModule.onAuthStateChanged;
+        window.firebaseGetFirestore = firestoreModule.getFirestore;
+        window.firebaseDoc = firestoreModule.doc;
+        window.firebaseGetDoc = firestoreModule.getDoc;
+        window.firebaseSetDoc = firestoreModule.setDoc;
+        window.firebaseOnSnapshot = firestoreModule.onSnapshot;
+        window.firebaseCollection = firestoreModule.collection;
+    </script>
+    <style>
+        /* Base styles for the body, setting font, background image, and layout */
+        body {
+            font-family: 'Inter', sans-serif;
+            /* Scenic background photo of Sydney Harbour Bridge */
+            background-image: url('https://upload.wikimedia.org/wikipedia/commons/2/27/Sydney_Harbour_Bridge_from_Milsons_Point.jpg');
+            background-size: cover; /* Ensures the image covers the entire viewport */
+            background-position: center; /* Centers the background image */
+            background-repeat: no-repeat; /* Prevents image repetition */
+            background-attachment: fixed; /* Keeps background fixed during scroll */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh; /* Minimum height to fill the viewport */
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box; /* Includes padding in element's total width and height */
+        }
+
+        /* Container for the main game content (game and leaderboard) */
+        .main-content {
+            display: flex;
+            gap: 2rem; /* Space between game and leaderboard containers */
+            flex-wrap: wrap; /* Allows items to wrap onto the next line on smaller screens */
+            justify-content: center; /* Centers the content horizontally */
+            width: 100%;
+            max-width: 1200px; /* Increased max-width to accommodate both sections */
+        }
+
+        /* Styles for the game section container */
+        .game-container {
+            background-color: rgba(255, 255, 255, 0.9); /* Semi-transparent white background for readability */
+            border-radius: 1.5rem; /* Rounded corners */
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); /* Soft shadow for depth */
+            padding: 2.5rem; /* Internal spacing */
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            position: relative; /* Needed for absolute positioning of timer */
+        }
+
+        /* Main title styling */
+        h1 {
+            color: #2c3e50;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+        }
+
+        /* Timer display positioning and styling */
+        #timer-display {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #e74c3c; /* Red color for urgency */
+            background-color: #fff;
+            padding: 0.5rem 1rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Acronym display area */
+        .acronym-display {
+            background-color: #f7f9fb;
+            color: #34495e;
+            font-size: 3rem;
+            font-weight: 700;
+            padding: 1.5rem 1rem;
+            border-radius: 0.75rem;
+            margin-bottom: 1.5rem;
+            box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.05); /* Inner shadow for depth */
+        }
+
+        /* Input field styling */
+        input[type="text"] {
+            padding: 0.8rem 1.2rem;
+            border: 2px solid #cbd5e1;
+            border-radius: 0.75rem;
+            font-size: 1.125rem;
+            width: 100%;
+            box-sizing: border-box;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+            color: #333;
+        }
+
+        /* Input field focus state */
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #4a90e2; /* Blue border on focus */
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2); /* Soft blue shadow on focus */
+        }
+
+        /* Group for action buttons */
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap; /* Allows buttons to wrap on small screens */
+        }
+
+        /* General button styling */
+        button {
+            background: linear-gradient(180deg, #4a90e2 0%, #357bdc 100%); /* Blue gradient */
+            color: white;
+            padding: 0.8rem 1.8rem;
+            border: none;
+            border-radius: 0.75rem;
+            font-size: 1.125rem;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            flex-grow: 1; /* Allows buttons to expand to fill available space */
+            min-width: 120px; /* Minimum width to prevent squishing */
+        }
+
+        /* Button hover effect */
+        button:hover {
+            background: linear-gradient(180deg, #357bdc 0%, #2a68b5 100%);
+            transform: translateY(-2px); /* Slight lift effect */
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Button active (click) effect */
+        button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Disabled button state */
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        /* Specific style for the manage acronyms button */
+        #manage-acronyms-button {
+            background: linear-gradient(180deg, #6c757d 0%, #5a6268 100%); /* Grayish gradient */
+        }
+        #manage-acronyms-button:hover {
+            background: linear-gradient(180deg, #5a6268 0%, #495057 100%);
+        }
+
+        /* Message display area (correct/incorrect feedback) */
+        #message {
+            margin-top: 1rem;
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        /* Styling for correct feedback message */
+        .correct {
+            color: #27ae60; /* Green */
+        }
+
+        /* Styling for incorrect feedback message */
+        .incorrect {
+            color: #e74c3c; /* Red */
+        }
+
+        /* Score display styling */
+        #score {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-top: 1rem;
+        }
+
+        /* Modal overlay styles */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6); /* Semi-transparent black overlay */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000; /* Ensures modal is on top */
+            display: none; /* Hidden by default */
+        }
+
+        /* Modal content box styles */
+        .modal-content {
+            background-color: #ffffff;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh; /* Limits height for scrollability */
+            overflow-y: auto; /* Enables vertical scrolling if content overflows */
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            position: relative;
+        }
+
+        /* Close button for modals */
+        .close-button {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: none;
+            border: none;
+            font-size: 2rem;
+            color: #6c757d;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .close-button:hover {
+            color: #343a40;
+        }
+
+        /* Modal title styling */
+        .modal-content h2 {
+            font-size: 2rem;
+            color: #2c3e50;
+            margin-bottom: 1rem;
+        }
+
+        /* Form for adding/editing acronyms in modal */
+        .acronym-form {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid #e0e6ec; /* Separator line */
+            padding-bottom: 1.5rem;
+        }
+        .acronym-form input {
+            padding: 0.7rem 1rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+        }
+        .acronym-form button {
+            background: linear-gradient(180deg, #28a745 0%, #218838 100%); /* Green for add button */
+            min-width: unset;
+        }
+        .acronym-form button:hover {
+            background: linear-gradient(180deg, #218838 0%, #1e7e34 100%);
+        }
+        .acronym-form button[data-mode="edit"] {
+            background: linear-gradient(180deg, #ffc107 0%, #e0a800 100%); /* Yellow for save changes button */
+            color: #333; /* Darker text for better contrast on yellow */
+        }
+        .acronym-form button[data-mode="edit"]:hover {
+            background: linear-gradient(180deg, #e0a800 0%, #c69500 100%);
+        }
+
+        /* List of acronyms in the modal */
+        .acronym-list {
+            list-style: none;
+            padding: 0;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e0e6ec;
+            border-radius: 0.5rem;
+        }
+
+        .acronym-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #f0f2f5;
+            font-size: 1rem;
+            color: #34495e;
+        }
+        .acronym-list li:last-child {
+            border-bottom: none; /* No border for the last item */
+        }
+        .acronym-list li span {
+            font-weight: 600;
+        }
+        .acronym-list li div {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .acronym-list li button {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+            border-radius: 0.5rem;
+            min-width: unset;
+            flex-grow: unset;
+            box-shadow: none;
+        }
+        .acronym-list li button.edit-btn {
+            background: linear-gradient(180deg, #007bff 0%, #0056b3 100%); /* Blue for edit button */
+        }
+        .acronym-list li button.edit-btn:hover {
+            background: linear-gradient(180deg, #0056b3 0%, #004085 100%);
+        }
+        .acronym-list li button.delete-btn {
+            background: linear-gradient(180deg, #dc3545 0%, #c82333 100%); /* Red for delete button */
+        }
+        .acronym-list li button.delete-btn:hover {
+            background: linear-gradient(180deg, #c82333 0%, #bd2130 100%);
+        }
+
+        /* Leaderboard section styling */
+        .leaderboard-container {
+            background-color: rgba(255, 255, 255, 0.9); /* Semi-transparent white background */
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 2.5rem;
+            max-width: 400px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .leaderboard-container h2 {
+            color: #2c3e50;
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        /* User info area in leaderboard */
+        .leaderboard-container #user-info {
+            font-size: 1rem;
+            color: #555;
+            margin-bottom: 1rem;
+            text-align: center;
+            padding: 0.5rem;
+            background-color: #f7f9fb;
+            border-radius: 0.75rem;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        /* User name input field in leaderboard */
+        .leaderboard-container #user-name-input {
+            width: calc(100% - 20px); /* Adjusts width to account for padding */
+            padding: 0.6rem 10px;
+            margin-top: 0.5rem;
+            border: 1px solid #ccc;
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        /* List of players in leaderboard */
+        .leaderboard-list {
+            list-style: none;
+            padding: 0;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #e0e6ec;
+            border-radius: 0.75rem;
+        }
+
+        .leaderboard-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #f0f2f5;
+            font-size: 1.1rem;
+            color: #34495e;
+        }
+        .leaderboard-list li:last-child {
+            border-bottom: none;
+        }
+        /* Zebra striping for list items */
+        .leaderboard-list li:nth-child(odd) {
+            background-color: #fcfcfc;
+        }
+        .leaderboard-list li:nth-child(even) {
+            background-color: #ffffff;
+        }
+        /* Highlight for the current user's score */
+        .leaderboard-list li.bg-blue-100 {
+            background-color: #e0f2fe;
+            border: 2px solid #90cdf4;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Responsive adjustments for smaller screens */
+        @media (max-width: 900px) {
+            .main-content {
+                flex-direction: column; /* Stack game and leaderboard vertically */
+                align-items: center;
+            }
+            .game-container, .leaderboard-container {
+                max-width: 90%; /* Allow containers to take up more width */
+            }
+        }
+
+        @media (max-width: 600px) {
+            .game-container {
+                padding: 1.5rem;
+                gap: 1rem;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            #timer-display {
+                font-size: 1.25rem;
+                top: 1rem;
+                right: 1rem;
+            }
+
+            .acronym-display {
+                font-size: 2.25rem;
+                padding: 1rem;
+            }
+
+            input[type="text"], button {
+                font-size: 1rem;
+                padding: 0.7rem 1.5rem;
+            }
+
+            .button-group {
+                flex-direction: column; /* Stack buttons vertically */
+            }
+
+            .modal-content {
+                padding: 1.5rem;
+                width: 95%;
+            }
+
+            .modal-content h2 {
+                font-size: 1.5rem;
+            }
+            .acronym-list li {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+            .acronym-list li div {
+                width: 100%;
+                justify-content: flex-end;
+            }
+
+            .leaderboard-container {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-content">
+        <div class="game-container">
+            <h1>Acronym Guessing Game</h1>
+            <div id="timer-display"></div>
+            <div id="acronym-display" class="acronym-display"></div>
+            <input type="text" id="guess-input" placeholder="What does it stand for?">
+            <div class="button-group">
+                <button id="submit-button">Submit Guess</button>
+                <button id="next-button">Next Acronym</button>
+                <button id="manage-acronyms-button">Manage Acronyms</button>
+            </div>
+            <div id="message"></div>
+            <div id="score">Your Local Score: 0</div>
+        </div>
+
+        <div class="leaderboard-container">
+            <h2>Leaderboard</h2>
+            <div id="user-info">
+                Your ID: <span id="user-id-display">Loading...</span><br>
+                Your Name: <input type="text" id="user-name-input" placeholder="Enter your name">
+            </div>
+            <ul id="leaderboard-list" class="leaderboard-list">
+                <li>Loading leaderboard...</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Acronym Management Modal -->
+    <div id="manage-acronyms-modal" class="modal">
+        <div class="modal-content">
+            <button class="close-button" id="close-modal-button">&times;</button>
+            <h2>Manage Acronyms</h2>
+
+            <div class="acronym-form">
+                <input type="text" id="modal-acronym-input" placeholder="Enter Acronym (e.g., BRB)">
+                <input type="text" id="modal-full-form-input" placeholder="Enter Full Form (e.g., Be Right Back)">
+                <button id="add-update-acronym-button">Add Acronym</button>
+            </div>
+
+            <h3>Current Acronyms</h3>
+            <ul id="acronym-list" class="acronym-list">
+                <!-- Acronyms will be loaded here by JavaScript -->
+            </ul>
+        </div>
+    </div>
+
+    <script type="module">
+        // --- Firebase Core Setup ---
+        // Import Firebase functions exposed globally by the script tag above
+        const initializeApp = window.firebaseInitializeApp;
+        const getAuth = window.firebaseGetAuth;
+        const signInAnonymously = window.firebaseSignInAnonymously;
+        const signInWithCustomToken = window.firebaseSignInWithCustomToken;
+        const onAuthStateChanged = window.firebaseOnAuthStateChanged;
+        const getFirestore = window.firebaseGetFirestore;
+        const doc = window.firebaseDoc;
+        const getDoc = window.firebaseGetDoc;
+        const setDoc = window.firebaseSetDoc;
+        const onSnapshot = window.firebaseOnSnapshot;
+        const collection = window.firebaseCollection;
+
+        // Firebase configuration (provided by the Canvas environment)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Firebase instances (will be initialized later)
+        let app;
+        let db;
+        let auth;
+        let userId; // Current authenticated user's ID (Firebase UID)
+        let userName; // Current user's display name
+        let adminUserId = null; // Stores the ID of the user who has admin control
+
+        // Default acronyms list (used if no shared custom acronyms are found in Firestore)
+        const defaultAcronyms = [
+            { acronym: "ASAP", fullForm: "As Soon As Possible" },
+            { acronym: "FYI", fullForm: "For Your Information" },
+            { acronym: "LOL", fullForm: "Laughing Out Loud" },
+            { acronym: "BRB", fullForm: "Be Right Back" },
+            { acronym: "OMG", fullForm: "Oh My Gosh" },
+            { acronym: "IDK", fullForm: "I Don't Know" },
+            { acronym: "TBD", fullForm: "To Be Determined" },
+            { acronym: "EOD", fullForm: "End Of Day" },
+            { acronym: "PTO", fullForm: "Paid Time Off" },
+            { acronym: "SME", fullForm: "Subject Matter Expert" },
+            { acronym: "CRM", fullForm: "Customer Relationship Management" },
+            { acronym: "HR", fullForm: "Human Resources" },
+            { acronym: "IT", fullForm: "Information Technology" },
+            { acronym: "KPI", fullForm: "Key Performance Indicator" },
+            { acronym: "RFP", fullForm: "Request for Proposal" },
+            { acronym: "SOW", fullForm: "Statement of Work" },
+            { acronym: "TMI", fullForm: "Too Much Information" },
+            { acronym: "WFH", fullForm: "Work From Home" },
+            { acronym: "OOTO", fullForm: "Out Of Office" },
+            { acronym: "P&L", fullForm: "Profit and Loss" },
+            { acronym: "FAQ", fullForm: "Frequently Asked Questions" },
+            { acronym: "CEO", fullForm: "Chief Executive Officer" },
+            { acronym: "CFO", fullForm: "Chief Financial Officer" },
+            { acronym: "COO", fullForm: "Chief Operating Officer" },
+            { acronym: "CTO", fullForm: "Chief Technology Officer" },
+            { acronym: "PM", fullForm: "Project Manager" },
+            { acronym: "MBA", fullForm: "Master of Business Administration" },
+            { acronym: "ROI", fullForm: "Return on Investment" },
+            { acronym: "URL", fullForm: "Uniform Resource Locator" },
+            { acronym: "WWW", fullForm: "World Wide Web" }
+        ];
+
+        // --- Game State Variables ---
+        let acronyms = []; // This will hold the active list of acronyms for the game (shared via Firestore)
+        let currentAcronym = {}; // Stores the currently displayed acronym and its full form
+        let localScore = 0; // Local score for the current player/session
+        let timerInterval;
+        let timeLeft;
+        const gameDuration = 8; // Seconds allowed to guess each acronym
+        let currentAcronymIndex = 0; // Index of the acronym currently displayed from the 'acronyms' array
+
+        // --- DOM Element References ---
+        const acronymDisplay = document.getElementById('acronym-display');
+        const guessInput = document.getElementById('guess-input');
+        const submitButton = document.getElementById('submit-button');
+        const nextButton = document.getElementById('next-button');
+        const manageAcronymsButton = document.getElementById('manage-acronyms-button');
+        const messageDisplay = document.getElementById('message');
+        const localScoreDisplay = document.getElementById('score');
+        const timerDisplay = document.getElementById('timer-display');
+
+        const manageAcronymsModal = document.getElementById('manage-acronyms-modal');
+        const closeModalButton = document.getElementById('close-modal-button');
+        const modalAcronymInput = document.getElementById('modal-acronym-input');
+        const modalFullFormInput = document.getElementById('modal-full-form-input');
+        const addUpdateAcronymButton = document.getElementById('add-update-acronym-button');
+        const acronymList = document.getElementById('acronym-list');
+
+        const userIdDisplay = document.getElementById('user-id-display');
+        const userNameInput = document.getElementById('user-name-input');
+        const leaderboardList = document.getElementById('leaderboard-list');
+
+        let editingIndex = -1; // -1 means not editing, otherwise it's the index of the acronym being edited
+
+        // --- Firebase Initialization and User Management ---
+
+        /**
+         * Initializes Firebase app, authenticates the user, and sets up real-time leaderboard.
+         * This runs once when the page loads.
+         */
+        async function initializeFirebaseAndAuth() {
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Attempt to sign in with a custom token (if provided by the environment)
+                // Otherwise, sign in anonymously.
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // Listen for changes in the authentication state
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid; // Set the current user's ID
+                        userIdDisplay.textContent = userId; // Display user ID
+
+                        // Reference to the current player's score document in Firestore
+                        const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'playerScores', userId);
+                        const userSnap = await getDoc(userRef); // Fetch existing user data
+
+                        // Load or set user name and local score
+                        if (userSnap.exists()) {
+                            userName = userSnap.data().userName || `Player_${userId.substring(0, 6)}`;
+                            localScore = userSnap.data().score || 0;
+                        } else {
+                            userName = `Player_${userId.substring(0, 6)}`;
+                            localScore = 0;
+                            // Create a new document for a new user with default values
+                            await setDoc(userRef, {
+                                userId: userId,
+                                userName: userName,
+                                score: 0,
+                                fastestCorrectAnswerTime: null // Initialize fastest time
+                            }, { merge: true });
+                        }
+                        userNameInput.value = userName; // Set username input field
+                        localScoreDisplay.textContent = `Your Local Score: ${localScore}`; // Display local score
+
+                        // Setup real-time listeners for shared game data
+                        setupSharedAcronymsListener(); // Listener for the shared acronym list
+                        setupSharedGameKeyListener(); // Listener for shared game state (current acronym, admin)
+                        setupRealtimeLeaderboard(); // Listener for player scores leaderboard
+
+                    } else {
+                        // User is signed out or not authenticated
+                        console.log("No user signed in.");
+                        userIdDisplay.textContent = 'Not Signed In';
+                        userNameInput.value = 'Guest';
+                        userId = null;
+                        userName = null;
+                        // Disable admin-only buttons if no user is authenticated
+                        updateAdminControls();
+                    }
+                });
+            } catch (error) {
+                console.error("Firebase initialization or authentication failed:", error);
+                userIdDisplay.textContent = 'Error!';
+            }
+        }
+
+        /**
+         * Updates the current user's display name in Firestore.
+         * This name is visible on the leaderboard.
+         * @param {string} newName - The new name to set for the user.
+         */
+        async function updateUserNameInFirestore(newName) {
+            if (!db || !userId) {
+                console.error("Firestore or User ID not available for name update.");
+                return;
+            }
+            const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'playerScores', userId);
+            try {
+                userName = newName.trim(); // Update local userName
+                await setDoc(userRef, { userName: userName }, { merge: true }); // Update Firestore
+                console.log(`User name updated to: ${userName}`);
+            } catch (e) {
+                console.error("Error updating user name:", e);
+            }
+        }
+
+        // --- Timer Functions ---
+
+        /**
+         * Starts the countdown timer for the current round.
+         */
+        function startTimer() {
+            stopTimer(); // Clear any previously running timer
+            timeLeft = gameDuration; // Reset time left to the game duration
+            timerDisplay.textContent = `Time: ${timeLeft}s`; // Update timer display
+
+            timerInterval = setInterval(() => {
+                timeLeft--; // Decrement time
+                timerDisplay.textContent = `Time: ${timeLeft}s`; // Update display
+
+                if (timeLeft <= 0) {
+                    stopTimer(); // Stop timer when it reaches zero
+                    timesUp(); // Call function to handle end of time
+                }
+            }, 1000); // Update every 1 second (1000 milliseconds)
+        }
+
+        /**
+         * Stops the countdown timer.
+         */
+        function stopTimer() {
+            clearInterval(timerInterval); // Clears the interval set by setInterval
+        }
+
+        /**
+         * Handles the game logic when the timer runs out.
+         */
+        function timesUp() {
+            messageDisplay.textContent = `Time's up! It was "${currentAcronym.fullForm}".`;
+            messageDisplay.className = 'incorrect'; // Style message as incorrect
+            submitButton.disabled = true; // Disable submit button
+            guessInput.disabled = true; // Disable input field
+        }
+
+        // --- Game Logic Functions ---
+
+        /**
+         * Loads the acronym based on the `currentAcronymIndex` received from the shared game state in Firestore.
+         * This function is triggered by changes in the shared game state.
+         */
+        function loadCurrentAcronymFromSharedState() {
+            // Check if there are any acronyms loaded
+            if (acronyms.length === 0) {
+                acronymDisplay.textContent = "No acronyms loaded! Ask the host to add some.";
+                submitButton.disabled = true;
+                guessInput.disabled = true;
+                stopTimer();
+                timerDisplay.textContent = '';
+                return;
+            }
+
+            // Enable buttons and input for a new round
+            submitButton.disabled = false;
+            guessInput.disabled = false;
+
+            // Ensure currentAcronymIndex is within the bounds of the acronyms array
+            currentAcronymIndex = Math.max(0, Math.min(currentAcronymIndex, acronyms.length - 1));
+
+            // Set the current acronym and update display
+            currentAcronym = acronyms[currentAcronymIndex];
+            acronymDisplay.textContent = currentAcronym.acronym;
+            guessInput.value = ''; // Clear guess input
+            messageDisplay.textContent = ''; // Clear previous messages
+            messageDisplay.className = ''; // Remove styling from previous messages
+            guessInput.focus(); // Focus on input for easy typing
+            startTimer(); // Start the timer for the new acronym
+        }
+
+        /**
+         * Checks the user's guess against the correct full form.
+         */
+        function checkGuess() {
+            stopTimer(); // Stop the timer immediately after a guess is made
+
+            const userGuess = guessInput.value.trim(); // Get guess and remove whitespace
+            const correctAnswer = currentAcronym.fullForm.toLowerCase();
+            const guessedAnswer = userGuess.toLowerCase();
+
+            if (guessedAnswer === correctAnswer) {
+                const timeTaken = gameDuration - timeLeft; // Calculate time taken for correct answer
+                messageDisplay.textContent = `Correct! Well done! (${timeTaken}s)`;
+                messageDisplay.className = 'correct';
+                localScore++; // Increment local score
+                updatePlayerScoreInFirestore(1, timeTaken); // Update Firestore score and fastest time
+            } else {
+                messageDisplay.textContent = `Incorrect! It's "${currentAcronym.fullForm}".`;
+                messageDisplay.className = 'incorrect';
+                updatePlayerScoreInFirestore(0, null); // Update Firestore score (0 points), no time update
+            }
+            localScoreDisplay.textContent = `Your Local Score: ${localScore}`; // Update local score display
+            submitButton.disabled = true; // Disable submit button after guessing
+            guessInput.disabled = true; // Disable input after guessing
+        }
+
+        /**
+         * Updates the player's total score and potentially their fastest correct answer time in Firestore.
+         * @param {number} pointsToAdd - The points to add to the current Firestore score (1 for correct, 0 for incorrect).
+         * @param {number|null} timeTaken - The time taken for the correct answer, or null if the answer was incorrect.
+         */
+        async function updatePlayerScoreInFirestore(pointsToAdd, timeTaken) {
+            if (!db || !userId) {
+                console.error("Firestore or User ID not available for score update.");
+                return;
+            }
+            // Document reference for the current user's score
+            const userScoreRef = doc(db, 'artifacts', appId, 'public', 'data', 'playerScores', userId);
+            try {
+                const docSnap = await getDoc(userScoreRef); // Get current score data
+                let currentFirestoreScore = 0;
+                let currentFastestTime = null;
+
+                if (docSnap.exists()) {
+                    currentFirestoreScore = docSnap.data().score || 0;
+                    currentFastestTime = docSnap.data().fastestCorrectAnswerTime;
+                }
+
+                const newTotalScore = currentFirestoreScore + pointsToAdd;
+                let newFastestTime = currentFastestTime;
+
+                // Update fastest time only if the current answer was correct and faster than previous record
+                if (timeTaken !== null && (newFastestTime === null || timeTaken < newFastestTime)) {
+                    newFastestTime = timeTaken;
+                }
+
+                // Set (or merge) the updated score and fastest time in Firestore
+                await setDoc(userScoreRef, {
+                    userId: userId,
+                    userName: userName || `Player_${userId.substring(0,6)}`,
+                    score: newTotalScore,
+                    fastestCorrectAnswerTime: newFastestTime,
+                    lastUpdated: Date.now() // Timestamp of last update
+                }, { merge: true }); // Use merge to avoid overwriting other fields
+                console.log(`Firestore score updated for ${userName}: ${newTotalScore}, Fastest Time: ${newFastestTime}`);
+            } catch (e) {
+                console.error("Error updating document: ", e);
+            }
+        }
+
+        // --- Shared Acronyms Management (Admin Only) ---
+
+        /**
+         * Sets up a real-time listener for the shared acronyms list in Firestore.
+         * This list determines the acronyms used by all players.
+         */
+        function setupSharedAcronymsListener() {
+            if (!db) {
+                console.error("Firestore not initialized for shared acronyms listener.");
+                return;
+            }
+            // Reference to the shared acronyms document
+            const sharedAcronymsDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'sharedAcronyms', 'activeAcronymsDoc');
+            onSnapshot(sharedAcronymsDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    if (data.list && Array.isArray(data.list)) {
+                        acronyms = data.list; // Update the local acronyms array
+                        console.log("Shared acronyms list updated from Firestore.");
+                        // Re-render game if current acronym is no longer valid or list changed significantly
+                        if (!currentAcronym || !acronyms.includes(currentAcronym)) {
+                             loadCurrentAcronymFromSharedState();
+                        }
+                    }
+                } else {
+                    // If shared document doesn't exist, the admin user will create it with defaults
+                    console.log("Shared acronyms document not found. Host will create.");
+                    if (userId && (userId === adminUserId)) { // Only host should try to initialize
+                        createOrUpdateSharedAcronyms(defaultAcronyms, userId);
+                    }
+                }
+            }, (error) => {
+                console.error("Error fetching shared acronyms: ", error);
+            });
+        }
+
+        /**
+         * Creates or updates the shared acronyms document in Firestore.
+         * This function should only be called by the current admin user.
+         * @param {Array} newAcronymsList - The list of acronyms to save.
+         * @param {string} ownerId - The userId of the owner (admin) of these acronyms.
+         */
+        async function createOrUpdateSharedAcronyms(newAcronymsList, ownerId) {
+            if (!db || !ownerId) {
+                console.error("Firestore or Owner ID not available for shared acronyms update.");
+                return;
+            }
+            const sharedAcronymsDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'sharedAcronyms', 'activeAcronymsDoc');
+            try {
+                // Fetch current data to preserve adminUserId if it exists and we're not explicitly setting it
+                const docSnap = await getDoc(sharedAcronymsDocRef);
+                let currentAdminUserForDoc = ownerId; // Default to current ownerId
+                if (docSnap.exists() && docSnap.data().adminUserId) {
+                    currentAdminUserForDoc = docSnap.data().adminUserId;
+                }
+
+                await setDoc(sharedAcronymsDocRef, {
+                    list: newAcronymsList,
+                    adminUserId: currentAdminUserForDoc, // Persist the actual adminUserId
+                    lastUpdated: Date.now()
+                }, { merge: true });
+                console.log("Shared acronyms document created/updated.");
+            } catch (e) {
+                console.error("Error creating/updating shared acronyms:", e);
+            }
+        }
+
+
+        // --- Shared Game Key State Management (Admin Controls Next Acronym) ---
+
+        /**
+         * Sets up a real-time listener for the shared game key state in Firestore.
+         * This document holds `currentAcronymIndex` and `adminUserId`.
+         */
+        function setupSharedGameKeyListener() {
+            if (!db) {
+                console.error("Firestore not initialized for game key listener.");
+                return;
+            }
+            const gameKeyDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'gameState', 'current');
+            onSnapshot(gameKeyDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    adminUserId = data.adminUserId; // Update local adminUserId from Firestore
+                    currentAcronymIndex = data.currentAcronymIndex || 0; // Update current acronym index
+
+                    // If acronyms are already loaded, load the new acronym. Otherwise, wait for acronyms to load.
+                    if (acronyms.length > 0) {
+                        loadCurrentAcronymFromSharedState();
+                    } else {
+                        console.log("Game state updated, waiting for acronyms list to fully load.");
+                    }
+                    updateAdminControls(); // Update button states based on who the admin is
+                } else {
+                    // If shared game state doesn't exist, the first authenticated user becomes the host
+                    if (userId && !adminUserId) { // Only attempt if logged in and no admin is set yet
+                        initializeSharedGameState(userId);
+                    }
+                    updateAdminControls(); // Update controls even if no shared state (will disable them)
+                }
+            }, (error) => {
+                console.error("Error fetching game key: ", error);
+            });
+        }
+
+        /**
+         * Initializes the shared game state document in Firestore.
+         * This is typically called by the first authenticated user who opens the game
+         * to establish them as the initial host.
+         * @param {string} initialAdminId - The userId of the user becoming the first admin.
+         */
+        async function initializeSharedGameState(initialAdminId) {
+            if (!db || !initialAdminId) return;
+            const gameKeyDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'gameState', 'current');
+            try {
+                await setDoc(gameKeyDocRef, {
+                    currentAcronymIndex: 0, // Start from the first acronym
+                    adminUserId: initialAdminId, // Set the current user as admin
+                    lastUpdated: Date.now()
+                });
+                adminUserId = initialAdminId; // Update local admin state
+                console.log("Shared game state initialized with current user as admin.");
+                updateAdminControls(); // Re-enable controls for the new admin
+            } catch (e) {
+                console.error("Error initializing shared game state:", e);
+            }
+        }
+
+        /**
+         * Advances to the next acronym in the shared list by updating the shared game state in Firestore.
+         * This function is only callable by the current admin user.
+         */
+        async function goToNextAcronym() {
+            if (!db || userId !== adminUserId) {
+                console.error("Only the host can advance the acronym.");
+                messageDisplay.textContent = 'Only the host can advance the acronym.';
+                messageDisplay.className = 'incorrect';
+                setTimeout(() => messageDisplay.textContent = '', 3000);
+                return;
+            }
+
+            if (acronyms.length === 0) {
+                messageDisplay.textContent = "No acronyms to advance to! Add some via 'Manage Acronyms'.";
+                messageDisplay.className = 'incorrect';
+                setTimeout(() => messageDisplay.textContent = '', 3000);
+                return;
+            }
+
+            let nextIndex = currentAcronymIndex + 1;
+            if (nextIndex >= acronyms.length) {
+                nextIndex = 0; // Loop back to the beginning of the list
+            }
+
+            const gameKeyDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'gameState', 'current');
+            try {
+                await setDoc(gameKeyDocRef, {
+                    currentAcronymIndex: nextIndex,
+                    lastUpdated: Date.now()
+                }, { merge: true }); // Merge to avoid overwriting adminUserId
+                console.log(`Host advanced to acronym index: ${nextIndex}`);
+            } catch (e) {
+                console.error("Error advancing acronym in Firestore:", e);
+            }
+        }
+
+        /**
+         * Updates the enabled/disabled state and text of host-only UI elements
+         * based on whether the current user is the admin.
+         */
+        function updateAdminControls() {
+            const isAdmin = (userId === adminUserId); // Check if current user is the admin
+
+            nextButton.disabled = !isAdmin; // Disable if not admin
+            manageAcronymsButton.disabled = !isAdmin; // Disable if not admin
+
+            // Update button text to reflect host status
+            if (!isAdmin) {
+                nextButton.textContent = 'Waiting for Host...';
+                manageAcronymsButton.textContent = 'Host Manages Acronyms';
+            } else {
+                nextButton.textContent = 'Next Acronym';
+                manageAcronymsButton.textContent = 'Manage Acronyms';
+            }
+        }
+
+
+        // --- Acronym Management Functions (now directly updating shared Firestore) ---
+
+        /**
+         * Opens the acronym management modal. Only callable by the admin user.
+         */
+        function openManageAcronymsModal() {
+            if (userId !== adminUserId) {
+                messageDisplay.textContent = 'Only the host can manage acronyms.';
+                messageDisplay.className = 'incorrect';
+                setTimeout(() => messageDisplay.textContent = '', 3000);
+                return;
+            }
+            manageAcronymsModal.style.display = 'flex'; // Show the modal
+            renderAcronymList(); // Populate the list inside the modal
+            // Reset form for new entry
+            if (modalAcronymInput) modalAcronymInput.value = '';
+            if (modalFullFormInput) modalFullFormInput.value = '';
+            if (addUpdateAcronymButton) {
+                addUpdateAcronymButton.textContent = 'Add Acronym';
+                addUpdateAcronymButton.dataset.mode = 'add';
+            }
+            editingIndex = -1;
+            stopTimer(); // Pause game timer while modal is open
+        }
+
+        /**
+         * Closes the acronym management modal.
+         */
+        function closeManageAcronymsModal() {
+            manageAcronymsModal.style.display = 'none'; // Hide the modal
+            // No need to explicitly save here as addUpdateAcronym and delete events call saveAcronymsToSharedFirestore
+            // The shared game key listener will automatically refresh the game state after modal closes.
+        }
+
+        /**
+         * Renders the list of acronyms in the modal's display area.
+         */
+        function renderAcronymList() {
+            if (!acronymList) return; // Safety check
+            acronymList.innerHTML = ''; // Clear existing list items
+
+            if (acronyms.length === 0) {
+                acronymList.innerHTML = '<li class="text-gray-500 text-center py-4">No custom acronyms yet. Add some above!</li>';
+                return;
+            }
+
+            acronyms.forEach((item, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span><strong>${item.acronym}:</strong> ${item.fullForm}</span>
+                    <div>
+                        <button class="edit-btn" data-index="${index}">Edit</button>
+                        <button class="delete-btn" data-index="${index}">Delete</button>
+                    </div>
+                `;
+                acronymList.appendChild(li);
+            });
+            attachAcronymListListeners(); // Re-attach event listeners to new buttons
+        }
+
+        /**
+         * Attaches event listeners to the edit and delete buttons within the acronym list in the modal.
+         */
+        function attachAcronymListListeners() {
+            document.querySelectorAll('.edit-btn').forEach(button => {
+                button.onclick = (event) => {
+                    const index = parseInt(event.target.dataset.index);
+                    const itemToEdit = acronyms[index];
+                    if (modalAcronymInput) modalAcronymInput.value = itemToEdit.acronym;
+                    if (modalFullFormInput) modalFullFormInput.value = itemToEdit.fullForm;
+                    if (addUpdateAcronymButton) {
+                        addUpdateAcronymButton.textContent = 'Save Changes';
+                        addUpdateAcronymButton.dataset.mode = 'edit';
+                    }
+                    editingIndex = index; // Set the index of the item being edited
+                    if (modalAcronymInput) modalAcronymInput.focus();
+                };
+            });
+
+            document.querySelectorAll('.delete-btn').forEach(button => {
+                button.onclick = (event) => {
+                    const index = parseInt(event.target.dataset.index);
+                    acronyms.splice(index, 1); // Remove the item from the local array
+                    saveAcronymsToSharedFirestore(); // Save changes to Firestore
+                    renderAcronymList(); // Re-render the list immediately
+                    // If the deleted item was the one being edited, clear the form
+                    if (editingIndex === index) {
+                        if (modalAcronymInput) modalAcronymInput.value = '';
+                        if (modalFullFormInput) modalFullFormInput.value = '';
+                        if (addUpdateAcronymButton) {
+                            addUpdateAcronymButton.textContent = 'Add Acronym';
+                            addUpdateAcronymButton.dataset.mode = 'add';
+                        }
+                        editingIndex = -1;
+                    }
+                };
+            });
+        }
+
+        /**
+         * Handles adding a new acronym or updating an existing one.
+         * Changes are saved directly to the shared Firestore document.
+         */
+        function addUpdateAcronym() {
+            const acronym = modalAcronymInput.value.trim().toUpperCase();
+            const fullForm = modalFullFormInput.value.trim();
+
+            if (!acronym || !fullForm) {
+                console.log('Please enter both acronym and full form.');
+                messageDisplay.textContent = 'Please enter both acronym and full form to add/update.';
+                messageDisplay.className = 'incorrect';
+                setTimeout(() => messageDisplay.textContent = '', 3000);
+                return;
+            }
+
+            // Check for duplicate acronyms (case-insensitive)
+            const isDuplicate = acronyms.some((item, idx) =>
+                item.acronym.toLowerCase() === acronym.toLowerCase() && idx !== editingIndex
+            );
+
+            if (isDuplicate) {
+                console.log('This acronym already exists!');
+                messageDisplay.textContent = 'This acronym already exists! Please use a unique acronym.';
+                messageDisplay.className = 'incorrect';
+                setTimeout(() => messageDisplay.textContent = '', 3000);
+                return;
+            }
+
+            if (addUpdateAcronymButton.dataset.mode === 'add') {
+                acronyms.push({ acronym, fullForm });
+            } else if (addUpdateAcronymButton.dataset.mode === 'edit' && editingIndex !== -1) {
+                acronyms[editingIndex] = { acronym, fullForm };
+            }
+
+            saveAcronymsToSharedFirestore(); // Save changes to Firestore immediately
+            renderAcronymList(); // Re-render the list in the modal
+
+            // Clear the form and reset button for adding new acronyms
+            if (modalAcronymInput) modalAcronymInput.value = '';
+            if (modalFullFormInput) modalFullFormInput.value = '';
+            if (addUpdateAcronymButton) {
+                addUpdateAcronymButton.textContent = 'Add Acronym';
+                addUpdateAcronymButton.dataset.mode = 'add';
+            }
+            editingIndex = -1;
+            if (modalAcronymInput) modalAcronymInput.focus();
+        }
+
+        /**
+         * Saves the current list of acronyms to the shared Firestore document.
+         * This function is only allowed to be called by the admin user.
+         */
+        async function saveAcronymsToSharedFirestore() {
+            if (!db || userId !== adminUserId) {
+                console.error("Not authorized to save shared acronyms.");
+                messageDisplay.textContent = 'Only the host can manage acronyms.';
+                messageDisplay.className = 'incorrect';
+                setTimeout(() => messageDisplay.textContent = '', 3000);
+                return;
+            }
+            // Call the helper function to update the shared document
+            await createOrUpdateSharedAcronyms(acronyms, adminUserId);
+            console.log("Acronyms saved to shared Firestore by admin.");
+        }
+
+
+        // --- Leaderboard Functions ---
+
+        /**
+         * Sets up a real-time listener for the public player scores collection in Firestore
+         * and updates the leaderboard display whenever scores change.
+         */
+        function setupRealtimeLeaderboard() {
+            if (!db) {
+                console.error("Firestore not initialized for leaderboard.");
+                return;
+            }
+            const playerScoresColRef = collection(db, 'artifacts', appId, 'public', 'data', 'playerScores');
+
+            // Set up a real-time listener for the collection
+            onSnapshot(playerScoresColRef, (snapshot) => {
+                const players = [];
+                snapshot.forEach((doc) => {
+                    players.push(doc.data());
+                });
+
+                // Sort players: primary sort by score (descending), secondary sort by fastest time (ascending)
+                players.sort((a, b) => {
+                    if (b.score !== a.score) {
+                        return b.score - a.score; // Higher score first
+                    }
+                    // If scores are equal, sort by fastest time. Handle nulls by pushing them to the end (Infinity).
+                    const aTime = a.fastestCorrectAnswerTime === null || a.fastestCorrectAnswerTime === undefined ? Infinity : a.fastestCorrectAnswerTime;
+                    const bTime = b.fastestCorrectAnswerTime === null || b.fastestCorrectAnswerTime === undefined ? Infinity : b.fastestCorrectAnswerTime;
+                    return aTime - bTime; // Shorter time first
+                });
+                renderLeaderboard(players); // Update the UI with the sorted leaderboard
+            }, (error) => {
+                console.error("Error fetching leaderboard: ", error);
+            });
+        }
+
+        /**
+         * Renders the leaderboard list in the UI.
+         * @param {Array<Object>} players - An array of player objects with score, name, and fastest time.
+         */
+        function renderLeaderboard(players) {
+            leaderboardList.innerHTML = ''; // Clear existing list
+            if (players.length === 0) {
+                leaderboardList.innerHTML = '<li class="text-gray-500 text-center py-4">No scores yet. Be the first!</li>';
+                return;
+            }
+            players.forEach((player, index) => {
+                const li = document.createElement('li');
+                li.className = 'flex justify-between items-center py-2 px-4 rounded-lg';
+                // Add highlight class if this is the current user's score
+                if (player.userId === userId) {
+                    li.classList.add('bg-blue-100', 'font-bold');
+                } else {
+                    li.classList.add('bg-gray-50');
+                }
+
+                // Format fastest time display
+                const fastestTimeText = player.fastestCorrectAnswerTime !== null && player.fastestCorrectAnswerTime !== undefined
+                                      ? `${player.fastestCorrectAnswerTime.toFixed(2)}s` : 'N/A';
+
+                li.innerHTML = `
+                    <span>${index + 1}. ${player.userName || 'Unknown Player'}</span>
+                    <span class="text-right">Score: ${player.score || 0}<br>Fastest: ${fastestTimeText}</span>
+                `;
+                leaderboardList.appendChild(li);
+            });
+        }
+
+        // --- Event Listeners ---
+
+        submitButton.addEventListener('click', checkGuess);
+        nextButton.addEventListener('click', goToNextAcronym); // Hook to the host-controlled function
+
+        // Allows pressing Enter key to submit the guess in the main game input
+        guessInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter' && !submitButton.disabled) {
+                checkGuess();
+            }
+        });
+
+        manageAcronymsButton.addEventListener('click', openManageAcronymsModal);
+        closeModalButton.addEventListener('click', closeManageAcronymsModal);
+        
+        // Event listeners for modal inputs/buttons (with null checks for safety, as they are dynamic)
+        if (addUpdateAcronymButton) addUpdateAcronymButton.addEventListener('click', addUpdateAcronym);
+        if (modalAcronymInput) {
+            modalAcronymInput.addEventListener('keypress', (event) => {
+                if (event.key === 'Enter') {
+                    modalFullFormInput.focus(); // Move focus to full form input on Enter
+                }
+            });
+        }
+        if (modalFullFormInput) {
+            modalFullFormInput.addEventListener('keypress', (event) => {
+                if (event.key === 'Enter') {
+                    addUpdateAcronym(); // Submit when Enter is pressed in full form input
+                }
+            });
+        }
+
+        // Event listeners for user name input (updates Firestore on blur or Enter)
+        userNameInput.addEventListener('blur', (event) => {
+            if (userName !== event.target.value.trim() && event.target.value.trim() !== '') {
+                updateUserNameInFirestore(event.target.value.trim());
+            }
+        });
+        userNameInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter' && event.target.value.trim() !== '') {
+                event.target.blur(); // Trigger blur to save the name
+            }
+        });
+
+        // --- Initialization ---
+        window.onload = () => {
+            initializeFirebaseAndAuth(); // Start the Firebase setup and authentication process
+            // The rest of the game initialization (loading acronyms, etc.)
+            // will happen once authentication state and admin role are determined via listeners.
+            updateAdminControls(); // Initial call to disable buttons until admin is identified
+        };
+    </script>
+</body>
+</html>
